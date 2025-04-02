@@ -1,0 +1,231 @@
+{
+  "protocol": "V3",
+  "amount": {
+    "numerator": [10000000],
+    "denominator": [100],
+    "currency": {
+      "chainId": 8453,
+      "decimals": 6,
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "isNative": false,
+      "isToken": true,
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    },
+    "decimalScale": [1000000]
+  },
+  "rawQuote": {
+    "type": "BigNumber",
+    "hex": "0xaad2f6"
+  },
+  "sqrtPriceX96AfterList": [
+    {
+      "type": "BigNumber",
+      "hex": "0x0a98b4cbf0fd45713dfaa89c1b"
+    }
+  ],
+  "initializedTicksCrossedList": [1],
+  "quoterGasEstimate": {
+    "type": "BigNumber",
+    "hex": "0x00"
+  },
+  "quote": {
+    "numerator": [11195126],
+    "denominator": [1],
+    "currency": {
+      "chainId": 8453,
+      "decimals": 8,
+      "symbol": "MAG7.ssi",
+      "name": "MAG7.ssi",
+      "isNative": false,
+      "isToken": true,
+      "address": "0xfa7fe8a33A6197de679C1588d9731Cb8Da735aDf"
+    },
+    "decimalScale": [100000000]
+  },
+  "percent": 10,
+  "route": {
+    "_midPrice": null,
+    "pools": [
+      {
+        "token0": {
+          "chainId": 8453,
+          "decimals": 6,
+          "symbol": "USDC",
+          "name": "USD Coin",
+          "isNative": false,
+          "isToken": true,
+          "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+        },
+        "token1": {
+          "chainId": 8453,
+          "decimals": 8,
+          "symbol": "MAG7.ssi",
+          "name": "MAG7.ssi",
+          "isNative": false,
+          "isToken": true,
+          "address": "0xfa7fe8a33A6197de679C1588d9731Cb8Da735aDf"
+        },
+        "fee": 3000,
+        "sqrtRatioX96": [862977483, 860044531, 203377566, 678],
+        "liquidity": [993111990, 51],
+        "tickCurrent": 47213,
+        "tickDataProvider": {},
+        "_token0Price": {
+          "numerator": [
+            866443001, 153892821, 909613101, 693086774, 304884235, 940595407,
+            459940
+          ],
+          "denominator": [0, 0, 0, 0, 0, 0, 4096],
+          "baseCurrency": {
+            "chainId": 8453,
+            "decimals": 6,
+            "symbol": "USDC",
+            "name": "USD Coin",
+            "isNative": false,
+            "isToken": true,
+            "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+          },
+          "quoteCurrency": {
+            "chainId": 8453,
+            "decimals": 8,
+            "symbol": "MAG7.ssi",
+            "name": "MAG7.ssi",
+            "isNative": false,
+            "isToken": true,
+            "address": "0xfa7fe8a33A6197de679C1588d9731Cb8Da735aDf"
+          },
+          "scalar": {
+            "numerator": [1000000],
+            "denominator": [100000000]
+          }
+        }
+      }
+    ],
+    "tokenPath": [
+      {
+        "chainId": 8453,
+        "decimals": 6,
+        "symbol": "USDC",
+        "name": "USD Coin",
+        "isNative": false,
+        "isToken": true,
+        "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+      },
+      {
+        "chainId": 8453,
+        "decimals": 8,
+        "symbol": "MAG7.ssi",
+        "name": "MAG7.ssi",
+        "isNative": false,
+        "isToken": true,
+        "address": "0xfa7fe8a33A6197de679C1588d9731Cb8Da735aDf"
+      }
+    ],
+    "input": {
+      "chainId": 8453,
+      "decimals": 6,
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "isNative": false,
+      "isToken": true,
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    },
+    "output": {
+      "chainId": 8453,
+      "decimals": 8,
+      "symbol": "MAG7.ssi",
+      "name": "MAG7.ssi",
+      "isNative": false,
+      "isToken": true,
+      "address": "0xfa7fe8a33A6197de679C1588d9731Cb8Da735aDf"
+    },
+    "protocol": "V3"
+  },
+  "gasModel": {},
+  "quoteToken": {
+    "chainId": 8453,
+    "decimals": 8,
+    "symbol": "MAG7.ssi",
+    "name": "MAG7.ssi",
+    "isNative": false,
+    "isToken": true,
+    "address": "0xfa7fe8a33A6197de679C1588d9731Cb8Da735aDf"
+  },
+  "tradeType": 0,
+  "gasCostInToken": {
+    "numerator": [
+      775264992, 669150670, 812029874, 484833417, 464290358, 1059167604,
+      381862863, 13021
+    ],
+    "denominator": [0, 0, 0, 0, 0, 0, 409600000],
+    "currency": {
+      "chainId": 8453,
+      "decimals": 8,
+      "symbol": "MAG7.ssi",
+      "name": "MAG7.ssi",
+      "isNative": false,
+      "isToken": true,
+      "address": "0xfa7fe8a33A6197de679C1588d9731Cb8Da735aDf"
+    },
+    "decimalScale": [100000000]
+  },
+  "gasCostInUSD": {
+    "numerator": [
+      971789648, 481595901, 214568104, 851717384, 294368108, 353148223, 1248898
+    ],
+    "denominator": [0, 0, 0, 0, 0, 0, 4096],
+    "currency": {
+      "chainId": 8453,
+      "decimals": 6,
+      "symbol": "USDbC",
+      "name": "USD Base Coin",
+      "isNative": false,
+      "isToken": true,
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    },
+    "decimalScale": [1000000]
+  },
+  "gasEstimate": {
+    "type": "BigNumber",
+    "hex": "0x017ae8"
+  },
+  "quoteAdjustedForGas": {
+    "numerator": [
+      298476832, 404591153, 261711949, 588908406, 609451465, 14574219,
+      320420912, 4257580
+    ],
+    "denominator": [0, 0, 0, 0, 0, 0, 409600000],
+    "currency": {
+      "chainId": 8453,
+      "decimals": 8,
+      "symbol": "MAG7.ssi",
+      "name": "MAG7.ssi",
+      "isNative": false,
+      "isToken": true,
+      "address": "0xfa7fe8a33A6197de679C1588d9731Cb8Da735aDf"
+    },
+    "decimalScale": [100000000]
+  },
+  "poolIdentifiers": ["0xCF9FB1BE875f85742882E30E932F2e4887ecb294"],
+  "tokenPath": [
+    {
+      "chainId": 8453,
+      "decimals": 6,
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "isNative": false,
+      "isToken": true,
+      "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    },
+    {
+      "chainId": 8453,
+      "decimals": 8,
+      "symbol": "MAG7.ssi",
+      "name": "MAG7.ssi",
+      "isNative": false,
+      "isToken": true,
+      "address": "0xfa7fe8a33A6197de679C1588d9731Cb8Da735aDf"
+    }
+  ]
+}

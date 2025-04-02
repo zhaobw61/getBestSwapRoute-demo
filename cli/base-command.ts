@@ -13,6 +13,8 @@ import NodeCache from 'node-cache';
 
 import {
   AlphaRouter,
+  AlphaRouterConfig,
+  AlphaRouterParams,
   CachingGasStationProvider,
   CachingTokenListProvider,
   CachingTokenProviderWithFallback,
@@ -22,6 +24,8 @@ import {
   EIP1559GasPriceProvider,
   EthEstimateGasSimulator,
   FallbackTenderlySimulator,
+  GasModelProviderConfig,
+  GasModelType,
   GasPrice,
   ID_TO_CHAIN_ID,
   ID_TO_NETWORK_NAME,
@@ -29,11 +33,12 @@ import {
   IRouter,
   ISwapToRatio,
   ITokenProvider,
+  IV2PoolProvider,
   IV3PoolProvider,
-  LegacyRouter,
+  //LegacyRouter,
   MetricLogger,
   NodeJSCache,
-  OnChainQuoteProvider,
+  //OnChainQuoteProvider,
   routeAmountsToString,
   RouteWithValidQuote,
   setGlobalLogger,
@@ -44,7 +49,9 @@ import {
   TokenProvider,
   UniswapMulticallProvider,
   V2PoolProvider,
+  V2Quoter,
   V3PoolProvider,
+  V3Quoter,
   V3RouteWithValidQuote,
   V4PoolProvider
 } from '../src';
@@ -56,6 +63,7 @@ import {
 } from '../src/providers/on-chain-gas-price-provider';
 import { PortionProvider } from '../src/providers/portion-provider';
 import { OnChainTokenFeeFetcher } from '../src/providers/token-fee-fetcher';
+import { NATIVE_OVERHEAD } from '../src/routers/alpha-router/gas-models/gas-costs';
 
 export abstract class BaseCommand extends Command {
   static flags = {
@@ -126,7 +134,7 @@ export abstract class BaseCommand extends Command {
   };
 
   private _log: Logger | null = null;
-  private _router: IRouter<any> | null = null;
+  private _router: IRouter<any> & Quoter | null = null;
   private _swapToRatioRouter: ISwapToRatio<any, any> | null = null;
   private _tokenProvider: ITokenProvider | null = null;
   private _poolProvider: IV3PoolProvider | null = null;
@@ -193,7 +201,7 @@ export abstract class BaseCommand extends Command {
     const query: ParserOutput<any, any> = this.parse();
     const {
       chainId: chainIdNumb,
-      router: routerStr,
+      //router: routerStr,
       debug,
       debugJSON,
       tokenListURI,
@@ -271,6 +279,7 @@ export abstract class BaseCommand extends Command {
       tokenProviderOnChain
     );
 
+    /*
     if (routerStr == 'legacy') {
       this._router = new LegacyRouter({
         chainId,
@@ -284,86 +293,87 @@ export abstract class BaseCommand extends Command {
         tokenProvider: this.tokenProvider,
       });
     } else {
-      const gasPriceCache = new NodeJSCache<GasPrice>(
-        new NodeCache({ stdTTL: 15, useClones: true })
-      );
+     */
+    const gasPriceCache = new NodeJSCache<GasPrice>(
+      new NodeCache({ stdTTL: 15, useClones: true })
+    );
 
-      const v4PoolProvider = new CachingV4PoolProvider(
-        chainId,
-        new V4PoolProvider(chainId, multicall2Provider),
-        new NodeJSCache(new NodeCache({ stdTTL: 360, useClones: false }))
-      );
-      const v3PoolProvider = new CachingV3PoolProvider(
-        chainId,
-        new V3PoolProvider(chainId, multicall2Provider),
-        new NodeJSCache(new NodeCache({ stdTTL: 360, useClones: false }))
-      );
-      const tokenFeeFetcher = new OnChainTokenFeeFetcher(
-        chainId,
-        provider
-      )
-      const tokenPropertiesProvider = new TokenPropertiesProvider(
-        chainId,
-        new NodeJSCache(new NodeCache({ stdTTL: 360, useClones: false })),
-        tokenFeeFetcher
-      )
-      const v2PoolProvider = new V2PoolProvider(chainId, multicall2Provider, tokenPropertiesProvider);
+    const v4PoolProvider = new CachingV4PoolProvider(
+      chainId,
+      new V4PoolProvider(chainId, multicall2Provider),
+      new NodeJSCache(new NodeCache({ stdTTL: 360, useClones: false }))
+    );
+    const v3PoolProvider = new CachingV3PoolProvider(
+      chainId,
+      new V3PoolProvider(chainId, multicall2Provider),
+      new NodeJSCache(new NodeCache({ stdTTL: 360, useClones: false }))
+    );
+    const tokenFeeFetcher = new OnChainTokenFeeFetcher(
+      chainId,
+      provider
+    )
+    const tokenPropertiesProvider = new TokenPropertiesProvider(
+      chainId,
+      new NodeJSCache(new NodeCache({ stdTTL: 360, useClones: false })),
+      tokenFeeFetcher
+    )
+    const v2PoolProvider = new V2PoolProvider(chainId, multicall2Provider, tokenPropertiesProvider);
 
-      const portionProvider = new PortionProvider();
-      const tenderlySimulator = new TenderlySimulator(
-        chainId,
-        'https://api.tenderly.co',
-        process.env.TENDERLY_USER!,
-        process.env.TENDERLY_PROJECT!,
-        process.env.TENDERLY_ACCESS_KEY!,
-        process.env.TENDERLY_NODE_API_KEY!,
-        v2PoolProvider,
-        v3PoolProvider,
-        v4PoolProvider,
-        provider,
-        portionProvider,
-        { [ChainId.ARBITRUM_ONE]: 1 },
-        5000,
-        100,
-        [ChainId.MAINNET]
-      );
+    const portionProvider = new PortionProvider();
+    const tenderlySimulator = new TenderlySimulator(
+      chainId,
+      'https://api.tenderly.co',
+      process.env.TENDERLY_USER!,
+      process.env.TENDERLY_PROJECT!,
+      process.env.TENDERLY_ACCESS_KEY!,
+      process.env.TENDERLY_NODE_API_KEY!,
+      v2PoolProvider,
+      v3PoolProvider,
+      v4PoolProvider,
+      provider,
+      portionProvider,
+      { [ChainId.ARBITRUM_ONE]: 1 },
+      5000,
+      100,
+      [ChainId.MAINNET]
+    );
 
-      const ethEstimateGasSimulator = new EthEstimateGasSimulator(
-        chainId,
-        provider,
-        v2PoolProvider,
-        v3PoolProvider,
-        v4PoolProvider,
-        portionProvider
-      );
+    const ethEstimateGasSimulator = new EthEstimateGasSimulator(
+      chainId,
+      provider,
+      v2PoolProvider,
+      v3PoolProvider,
+      v4PoolProvider,
+      portionProvider
+    );
 
-      const simulator = new FallbackTenderlySimulator(
-        chainId,
-        provider,
-        portionProvider,
-        tenderlySimulator,
-        ethEstimateGasSimulator
-      );
+    const simulator = new FallbackTenderlySimulator(
+      chainId,
+      provider,
+      portionProvider,
+      tenderlySimulator,
+      ethEstimateGasSimulator
+    );
 
-      const router = new AlphaRouter({
-        provider,
+    const router = new BetaRouter({
+      provider,
+      chainId,
+      multicall2Provider: multicall2Provider,
+      gasPriceProvider: new CachingGasStationProvider(
         chainId,
-        multicall2Provider: multicall2Provider,
-        gasPriceProvider: new CachingGasStationProvider(
+        new OnChainGasPriceProvider(
           chainId,
-          new OnChainGasPriceProvider(
-            chainId,
-            new EIP1559GasPriceProvider(provider),
-            new LegacyGasPriceProvider(provider)
-          ),
-          gasPriceCache
+          new EIP1559GasPriceProvider(provider),
+          new LegacyGasPriceProvider(provider)
         ),
-        simulator,
-      });
+        gasPriceCache
+      ),
+      simulator,
+    });
 
-      this._swapToRatioRouter = router;
-      this._router = router;
-    }
+    this._swapToRatioRouter = router;
+    this._router = router;
+    //}
   }
 
   logSwapResults(
@@ -403,7 +413,7 @@ export abstract class BaseCommand extends Command {
         Math.min(estimatedGasUsedUSD.currency.decimals, 6)
       )}`
     );
-    if(estimatedGasUsedGasToken) {
+    if (estimatedGasUsedGasToken) {
       this.logger.info(
         `Gas Used gas token: ${estimatedGasUsedGasToken.toFixed(
           Math.min(estimatedGasUsedGasToken.currency.decimals, 6)
@@ -430,5 +440,68 @@ export abstract class BaseCommand extends Command {
       total = total.add(tick);
     }
     this.logger.info(`Total ticks crossed: ${total}`);
+  }
+}
+
+interface Quoter {
+  getV2Quoter(): V2Quoter;
+  getV3Quoter(): V3Quoter;
+  getV2PoolProvider(): IV2PoolProvider;
+  getV3PoolProvider(): IV3PoolProvider;
+  getGasModel(amount: CurrencyAmount<Currency>, quoteCurrency: Currency, routingConfig: AlphaRouterConfig): Promise<GasModelType>;
+}
+class BetaRouter extends AlphaRouter implements Quoter {
+  constructor(config: AlphaRouterParams) {
+    super(config);
+  }
+
+  public getV2Quoter(
+  ) {
+    return this.v2Quoter;
+  }
+
+  public getV3Quoter() {
+    return this.v3Quoter;
+  }
+
+  public getV2PoolProvider() {
+    return this.v2PoolProvider;
+  }
+
+  public getV3PoolProvider() {
+    return this.v3PoolProvider;
+  }
+
+  public async getGasModel(amount: CurrencyAmount<Currency>, quoteCurrency: Currency, routingConfig: AlphaRouterConfig) {
+    const blockNumber = await this.getBlockNumberPromise();
+    const gasPriceWei = await this.getGasPriceWei(
+      blockNumber,
+      await routingConfig.blockNumber
+    );
+
+    // const gasTokenAccessor = await this.tokenProvider.getTokens([routingConfig.gasToken!]);
+    const gasToken = routingConfig.gasToken
+      ? (
+        await this.tokenProvider.getTokens([routingConfig.gasToken])
+      ).getTokenByAddress(routingConfig.gasToken)
+      : undefined;
+
+    const providerConfig: GasModelProviderConfig = {
+      ...routingConfig,
+      blockNumber,
+      additionalGasOverhead: NATIVE_OVERHEAD(
+        this.chainId,
+        amount.currency,
+        quoteCurrency
+      ),
+      gasToken,
+    };
+
+    return await this.getGasModels(
+      gasPriceWei,
+      amount.currency.wrapped,
+      quoteCurrency.wrapped,
+      providerConfig
+    );
   }
 }

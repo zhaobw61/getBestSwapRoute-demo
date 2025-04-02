@@ -1,7 +1,7 @@
 import { Logger } from '@ethersproject/logger';
 import { flags } from '@oclif/command';
 import { Protocol } from '@uniswap/router-sdk';
-import { Currency, Percent, TradeType } from '@uniswap/sdk-core';
+import { Currency, CurrencyAmount, Fraction, Percent, Token, TradeType } from '@uniswap/sdk-core';
 import dotenv from 'dotenv';
 import _ from 'lodash';
 
@@ -10,18 +10,36 @@ import {
   MapWithLowerCaseKey,
   nativeOnChain,
   parseAmount,
-  SwapRoute,
+  //SwapRoute,
   SwapType
 } from '../../src';
 import { NATIVE_NAMES_BY_ID, TO_PROTOCOL } from '../../src/util';
 import { BaseCommand } from '../base-command';
-import { UniversalRouterVersion } from '@uniswap/universal-router-sdk';
+import { computeAllV2Routes, computeAllV3Routes } from '../../src/routers/alpha-router/functions/compute-all-routes';
+import { BigNumber } from 'ethers';
+import { FeeAmount } from '@uniswap/v3-sdk';
+//import { Pair } from '@uniswap/v2-sdk';
+//import { UniversalRouterVersion } from '@uniswap/universal-router-sdk';
 
 dotenv.config();
 
 Logger.globalLogger();
 Logger.setLogLevel(Logger.levels.DEBUG);
 
+function getAmountDistribution(
+  amount: CurrencyAmount<Currency>,
+  distributionPercent: number
+): [number[], CurrencyAmount<Currency>[]] {
+  const percents: number[] = [];
+  const amounts: CurrencyAmount<Currency>[] = [];
+
+  for (let i = 1; i <= 100 / distributionPercent; i++) {
+    percents.push(i * distributionPercent);
+    amounts.push(amount.multiply(new Fraction(i * distributionPercent, 100)));
+  }
+
+  return [percents, amounts];
+}
 export class Quote extends BaseCommand {
   static description = 'Uniswap Smart Order Router CLI';
 
@@ -57,7 +75,7 @@ export class Quote extends BaseCommand {
       exactIn,
       exactOut,
       recipient,
-      debug,
+      //debug,
       topN,
       topNTokenInOut,
       topNSecondHop,
@@ -74,10 +92,10 @@ export class Quote extends BaseCommand {
       protocols: protocolsStr,
       forceCrossProtocol,
       forceMixedRoutes,
-      simulate,
+      //simulate,
       debugRouting,
       enableFeeOnTransferFeeFetching,
-      requestBlockNumber,
+      //requestBlockNumber,
       gasToken
     } = flags;
 
@@ -113,7 +131,7 @@ export class Quote extends BaseCommand {
 
     const chainId = ID_TO_CHAIN_ID(chainIdNumb);
 
-    const log = this.logger;
+    //const log = this.logger;
     const tokenProvider = this.tokenProvider;
     const router = this.router;
 
@@ -132,50 +150,87 @@ export class Quote extends BaseCommand {
         tokenOutStr
       )!;
 
-    let swapRoutes: SwapRoute | null;
     if (exactIn) {
       const amountIn = parseAmount(amountStr, tokenIn);
-      swapRoutes = await router.route(
+      /*
+      const currencyA = CurrencyAmount.fromRawAmount(tokenIn as Token, amountStr);
+      const currencyB = CurrencyAmount.fromRawAmount(tokenOut as Token, amountStr);
+      */
+      const v2PoolProvider = router.getV2PoolProvider();
+      const v3PoolProvider = router.getV3PoolProvider();
+      const v2Accessor = await v2PoolProvider.getPools([[tokenIn as Token, tokenOut as Token]]);
+      const v3Accessor = await v3PoolProvider.getPools([[tokenIn as Token, tokenOut as Token, FeeAmount.MEDIUM]]);
+      const v2Pools = v2Accessor.getAllPools();
+      const v3Pools = v3Accessor.getAllPools();
+      const v2Routes = computeAllV2Routes(
+        tokenIn as Token,
+        tokenOut as Token,
+        v2Pools,
+        1
+      )
+      const v3Routes = computeAllV3Routes(
+        tokenIn as Token,
+        tokenOut as Token,
+        v3Pools,
+        1
+      )
+      const v2Quoter = router.getV2Quoter();
+      const v3Quoter = router.getV3Quoter();
+      const distributionPercent = 50;
+      const [percents, amounts] = getAmountDistribution(
         amountIn,
-        tokenOut,
-        TradeType.EXACT_INPUT,
-        recipient
-          ? {
-            type: SwapType.UNIVERSAL_ROUTER,
-            deadlineOrPreviousBlockhash: 10000000000000,
-            recipient,
-            slippageTolerance: new Percent(5, 100),
-            simulate: simulate ? { fromAddress: recipient } : undefined,
-            version: UniversalRouterVersion.V2_0
-          }
-          : undefined,
-        {
-          blockNumber: requestBlockNumber ?? this.blockNumber,
-          v3PoolSelection: {
-            topN,
-            topNTokenInOut,
-            topNSecondHop,
-            topNSecondHopForTokenAddress,
-            topNWithEachBaseToken,
-            topNWithBaseToken,
-            topNWithBaseTokenInSet,
-            topNDirectSwaps,
-          },
-          maxSwapsPerPath,
-          minSplits,
-          maxSplits,
-          distributionPercent,
-          protocols,
-          forceCrossProtocol,
-          forceMixedRoutes,
-          debugRouting,
-          enableFeeOnTransferFeeFetching,
-          gasToken
-        }
+        distributionPercent
       );
+      const maxSplits = 2;
+      const minSplits = 1;
+      const dummyConfig = {
+        blockNumber: this.blockNumber - 10,
+        v2PoolSelection: {
+          topN,
+          topNTokenInOut,
+          topNSecondHop,
+          topNWithEachBaseToken,
+          topNWithBaseToken,
+          topNDirectSwaps,
+        },
+        v3PoolSelection: {
+          topN,
+          topNTokenInOut,
+          topNSecondHop,
+          topNWithEachBaseToken,
+          topNWithBaseToken,
+          topNDirectSwaps,
+        },
+        v4PoolSelection: {
+          topN,
+          topNTokenInOut,
+          topNSecondHop,
+          topNWithEachBaseToken,
+          topNWithBaseToken,
+          topNDirectSwaps,
+        },
+        maxSwapsPerPath,
+        minSplits,
+        maxSplits,
+        distributionPercent,
+        protocols,
+        forceCrossProtocol,
+        forceMixedRoutes,
+        debugRouting,
+        enableFeeOnTransferFeeFetching,
+        gasToken
+      }
+      const v2quotes = await v2Quoter.getQuotes(v2Routes, amounts, percents, tokenOut as Token, TradeType.EXACT_INPUT,
+        dummyConfig, undefined, undefined, BigNumber.from(1e6));
+      console.log(v2quotes);
+
+      const { v3GasModel } = await router.getGasModel(amountIn, tokenOut as Currency, dummyConfig);
+      const v3quotes = await v3Quoter.getQuotes(v3Routes, amounts, percents, tokenOut as Token, TradeType.EXACT_INPUT,
+        dummyConfig, undefined, v3GasModel);
+      console.log(v3quotes);
     } else {
       const amountOut = parseAmount(amountStr, tokenOut);
-      swapRoutes = await router.route(
+      await router.route(
         amountOut,
         tokenIn,
         TradeType.EXACT_OUTPUT,
@@ -212,42 +267,5 @@ export class Quote extends BaseCommand {
         }
       );
     }
-
-    if (!swapRoutes) {
-      log.error(
-        `Could not find route. ${
-          debug ? '' : 'Run in debug mode for more info'
-        }.`
-      );
-      return;
-    }
-
-    const {
-      blockNumber,
-      estimatedGasUsed,
-      estimatedGasUsedQuoteToken,
-      estimatedGasUsedUSD,
-      estimatedGasUsedGasToken,
-      gasPriceWei,
-      methodParameters,
-      quote,
-      quoteGasAdjusted,
-      route: routeAmounts,
-      simulationStatus,
-    } = swapRoutes;
-
-    this.logSwapResults(
-      routeAmounts,
-      quote,
-      quoteGasAdjusted,
-      estimatedGasUsedQuoteToken,
-      estimatedGasUsedUSD,
-      estimatedGasUsedGasToken,
-      methodParameters,
-      blockNumber,
-      estimatedGasUsed,
-      gasPriceWei,
-      simulationStatus
-    );
   }
 }
