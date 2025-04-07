@@ -14,13 +14,14 @@ import _ from 'lodash';
 
 import { FeeAmount } from '@uniswap/v3-sdk';
 import { BigNumber } from 'ethers';
-import allRoutesWithValidQuotes from '../../allRoutesWithValidQuotes-1.json';
+import { allRoutesWithValidQuotes } from '../../allRoutesWithValidQuotes-1';
 import routingConfig from '../../routingConfig.json';
 import {
   ID_TO_CHAIN_ID,
   MapWithLowerCaseKey,
   nativeOnChain,
   parseAmount,
+  RouteWithValidQuote,
   //SwapRoute,
   SwapType,
 } from '../../src';
@@ -273,10 +274,149 @@ export class Quote extends BaseCommand {
       console.log(v3quotes);
 
       const portionProvider = new PortionProvider();
+
+      function convertToRouteWithValidQuote(route: any): RouteWithValidQuote {
+        try {
+          // 创建 Token 实例
+          const inputToken = new Token(
+            route.route.input.chainId,
+            route.route.input.address,
+            route.route.input.decimals,
+            route.route.input.symbol,
+            route.route.input.name
+          );
+
+          const outputToken = new Token(
+            route.route.output.chainId,
+            route.route.output.address,
+            route.route.output.decimals,
+            route.route.output.symbol,
+            route.route.output.name
+          );
+
+          // 处理 pools
+          const pools = route.route.pools.map((pool: any) => {
+            const token0 = new Token(
+              pool.token0.chainId,
+              pool.token0.address,
+              pool.token0.decimals,
+              pool.token0.symbol,
+              pool.token0.name
+            );
+
+            const token1 = new Token(
+              pool.token1.chainId,
+              pool.token1.address,
+              pool.token1.decimals,
+              pool.token1.symbol,
+              pool.token1.name
+            );
+
+            return new Pool(
+              token0,
+              token1,
+              pool.fee,
+              BigNumber.from('79228162514264337593543950336'), // 2^96
+              BigNumber.from('1000000000000000000'), // 1e18
+              pool.tickCurrent || 0
+            );
+          });
+
+          // 创建 V3Route
+          const v3Route = new V3Route(
+            route.tokenPath.map(
+              (token: any) =>
+                new Token(
+                  token.chainId,
+                  token.address,
+                  token.decimals,
+                  token.symbol,
+                  token.name
+                )
+            ),
+            pools,
+            inputToken,
+            outputToken
+          );
+
+          // 创建 RouteWithValidQuote
+          return new V3RouteWithValidQuote(
+            v3Route,
+            CurrencyAmount.fromRawAmount(
+              new Token(
+                route.quote.currency.chainId,
+                route.quote.currency.address,
+                route.quote.currency.decimals,
+                route.quote.currency.symbol
+              ),
+              route.quote.numerator?.[0] || '0'
+            ),
+            CurrencyAmount.fromRawAmount(
+              new Token(
+                route.quoteAdjustedForGas.currency.chainId,
+                route.quoteAdjustedForGas.currency.address,
+                route.quoteAdjustedForGas.currency.decimals,
+                route.quoteAdjustedForGas.currency.symbol
+              ),
+              route.quoteAdjustedForGas.numerator?.[0] || '0'
+            ),
+            BigNumber.from(route.gasEstimate?.hex || '0'),
+            CurrencyAmount.fromRawAmount(
+              new Token(
+                route.gasCostInToken.currency.chainId,
+                route.gasCostInToken.currency.address,
+                route.gasCostInToken.currency.decimals,
+                route.gasCostInToken.currency.symbol
+              ),
+              route.gasCostInToken.numerator?.[0] || '0'
+            ),
+            CurrencyAmount.fromRawAmount(
+              new Token(
+                route.gasCostInUSD.currency.chainId,
+                route.gasCostInUSD.currency.address,
+                route.gasCostInUSD.currency.decimals,
+                route.gasCostInUSD.currency.symbol
+              ),
+              route.gasCostInUSD.numerator?.[0] || '0'
+            ),
+            route.percent || 0,
+            new Token(
+              route.quoteToken.chainId,
+              route.quoteToken.address,
+              route.quoteToken.decimals,
+              route.quoteToken.symbol
+            ),
+            route.tradeType,
+            CurrencyAmount.fromRawAmount(
+              new Token(
+                route.amount.currency.chainId,
+                route.amount.currency.address,
+                route.amount.currency.decimals,
+                route.amount.currency.symbol
+              ),
+              route.amount.numerator?.[0] || '0'
+            ),
+            BigNumber.from(route.rawQuote?.hex || '0'),
+            (route.sqrtPriceX96AfterList || []).map((price: any) =>
+              BigNumber.from(price?.hex || '0')
+            ),
+            route.initializedTicksCrossedList || [],
+            BigNumber.from(route.quoterGasEstimate?.hex || '0'),
+            route.gasModel || null
+          );
+        } catch (error) {
+          console.error('Error converting route:', error);
+          return null;
+        }
+      }
+      // 转换路由数据
+      const routes = allRoutesWithValidQuotes
+        .map(convertToRouteWithValidQuote)
+        .filter((route): route is RouteWithValidQuote => route !== null);
       const bestResult = await getBestSwapRoute(
         amountIn,
         percents,
-        allRoutesWithValidQuotes as any,
+        routes as any,
         TradeType.EXACT_INPUT,
         8453,
         routingConfig as any,
