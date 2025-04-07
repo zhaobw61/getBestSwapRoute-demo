@@ -1,23 +1,37 @@
 import { Logger } from '@ethersproject/logger';
 import { flags } from '@oclif/command';
 import { Protocol } from '@uniswap/router-sdk';
-import { Currency, CurrencyAmount, Fraction, Percent, Token, TradeType } from '@uniswap/sdk-core';
+import {
+  Currency,
+  CurrencyAmount,
+  Fraction,
+  Percent,
+  Token,
+  TradeType,
+} from '@uniswap/sdk-core';
 import dotenv from 'dotenv';
 import _ from 'lodash';
 
+import { FeeAmount } from '@uniswap/v3-sdk';
+import { BigNumber } from 'ethers';
+import allRoutesWithValidQuotes from '../../allRoutesWithValidQuotes-1.json';
+import routingConfig from '../../routingConfig.json';
 import {
   ID_TO_CHAIN_ID,
   MapWithLowerCaseKey,
   nativeOnChain,
   parseAmount,
   //SwapRoute,
-  SwapType
+  SwapType,
 } from '../../src';
+import { PortionProvider } from '../../src/providers/portion-provider';
+import { getBestSwapRoute } from '../../src/routers/alpha-router/functions/best-swap-route';
+import {
+  computeAllV2Routes,
+  computeAllV3Routes,
+} from '../../src/routers/alpha-router/functions/compute-all-routes';
 import { NATIVE_NAMES_BY_ID, TO_PROTOCOL } from '../../src/util';
 import { BaseCommand } from '../base-command';
-import { computeAllV2Routes, computeAllV3Routes } from '../../src/routers/alpha-router/functions/compute-all-routes';
-import { BigNumber } from 'ethers';
-import { FeeAmount } from '@uniswap/v3-sdk';
 //import { Pair } from '@uniswap/v2-sdk';
 //import { UniversalRouterVersion } from '@uniswap/universal-router-sdk';
 
@@ -61,7 +75,10 @@ export class Quote extends BaseCommand {
     }),
     simulate: flags.boolean({ required: false, default: false }),
     debugRouting: flags.boolean({ required: false, default: true }),
-    enableFeeOnTransferFeeFetching: flags.boolean({ required: false, default: false }),
+    enableFeeOnTransferFeeFetching: flags.boolean({
+      required: false,
+      default: false,
+    }),
     requestBlockNumber: flags.integer({ required: false }),
     gasToken: flags.string({ required: false }),
   };
@@ -96,7 +113,7 @@ export class Quote extends BaseCommand {
       debugRouting,
       enableFeeOnTransferFeeFetching,
       //requestBlockNumber,
-      gasToken
+      gasToken,
     } = flags;
 
     const topNSecondHopForTokenAddress = new MapWithLowerCaseKey();
@@ -105,7 +122,8 @@ export class Quote extends BaseCommand {
         const entryParts = entry.split('|');
         if (entryParts.length != 2) {
           throw new Error(
-            'flag --topNSecondHopForTokenAddressRaw must be in format tokenAddress|topN,...');
+            'flag --topNSecondHopForTokenAddressRaw must be in format tokenAddress|topN,...'
+          );
         }
         const topNForTokenAddress: number = Number(entryParts[1]!);
         topNSecondHopForTokenAddress.set(entryParts[0]!, topNForTokenAddress);
@@ -139,16 +157,16 @@ export class Quote extends BaseCommand {
     const tokenIn: Currency = NATIVE_NAMES_BY_ID[chainId]!.includes(tokenInStr)
       ? nativeOnChain(chainId)
       : (await tokenProvider.getTokens([tokenInStr])).getTokenByAddress(
-        tokenInStr
-      )!;
+          tokenInStr
+        )!;
 
     const tokenOut: Currency = NATIVE_NAMES_BY_ID[chainId]!.includes(
       tokenOutStr
     )
       ? nativeOnChain(chainId)
       : (await tokenProvider.getTokens([tokenOutStr])).getTokenByAddress(
-        tokenOutStr
-      )!;
+          tokenOutStr
+        )!;
 
     if (exactIn) {
       const amountIn = parseAmount(amountStr, tokenIn);
@@ -158,8 +176,12 @@ export class Quote extends BaseCommand {
       */
       const v2PoolProvider = router.getV2PoolProvider();
       const v3PoolProvider = router.getV3PoolProvider();
-      const v2Accessor = await v2PoolProvider.getPools([[tokenIn as Token, tokenOut as Token]]);
-      const v3Accessor = await v3PoolProvider.getPools([[tokenIn as Token, tokenOut as Token, FeeAmount.MEDIUM]]);
+      const v2Accessor = await v2PoolProvider.getPools([
+        [tokenIn as Token, tokenOut as Token],
+      ]);
+      const v3Accessor = await v3PoolProvider.getPools([
+        [tokenIn as Token, tokenOut as Token, FeeAmount.MEDIUM],
+      ]);
       const v2Pools = v2Accessor.getAllPools();
       const v3Pools = v3Accessor.getAllPools();
       const v2Routes = computeAllV2Routes(
@@ -167,13 +189,13 @@ export class Quote extends BaseCommand {
         tokenOut as Token,
         v2Pools,
         1
-      )
+      );
       const v3Routes = computeAllV3Routes(
         tokenIn as Token,
         tokenOut as Token,
         v3Pools,
         1
-      )
+      );
       const v2Quoter = router.getV2Quoter();
       const v3Quoter = router.getV3Quoter();
       const distributionPercent = 50;
@@ -218,16 +240,50 @@ export class Quote extends BaseCommand {
         forceMixedRoutes,
         debugRouting,
         enableFeeOnTransferFeeFetching,
-        gasToken
-      }
-      const v2quotes = await v2Quoter.getQuotes(v2Routes, amounts, percents, tokenOut as Token, TradeType.EXACT_INPUT,
-        dummyConfig, undefined, undefined, BigNumber.from(1e6));
+        gasToken,
+      };
+      const v2quotes = await v2Quoter.getQuotes(
+        v2Routes,
+        amounts,
+        percents,
+        tokenOut as Token,
+        TradeType.EXACT_INPUT,
+        dummyConfig,
+        undefined,
+        undefined,
+        BigNumber.from(1e6)
+      );
       console.log(v2quotes);
 
-      const { v3GasModel } = await router.getGasModel(amountIn, tokenOut as Currency, dummyConfig);
-      const v3quotes = await v3Quoter.getQuotes(v3Routes, amounts, percents, tokenOut as Token, TradeType.EXACT_INPUT,
-        dummyConfig, undefined, v3GasModel);
+      const { v3GasModel } = await router.getGasModel(
+        amountIn,
+        tokenOut as Currency,
+        dummyConfig
+      );
+      const v3quotes = await v3Quoter.getQuotes(
+        v3Routes,
+        amounts,
+        percents,
+        tokenOut as Token,
+        TradeType.EXACT_INPUT,
+        dummyConfig,
+        undefined,
+        v3GasModel
+      );
       console.log(v3quotes);
+
+      const portionProvider = new PortionProvider();
+      const bestResult = await getBestSwapRoute(
+        amountIn,
+        percents,
+        allRoutesWithValidQuotes as any,
+        TradeType.EXACT_INPUT,
+        8453,
+        routingConfig as any,
+        portionProvider,
+        v3GasModel as any
+      );
+      console.log('Best result: ', bestResult);
     } else {
       const amountOut = parseAmount(amountStr, tokenOut);
       await router.route(
@@ -236,11 +292,11 @@ export class Quote extends BaseCommand {
         TradeType.EXACT_OUTPUT,
         recipient
           ? {
-            type: SwapType.SWAP_ROUTER_02,
-            deadline: 100,
-            recipient,
-            slippageTolerance: new Percent(5, 10_000),
-          }
+              type: SwapType.SWAP_ROUTER_02,
+              deadline: 100,
+              recipient,
+              slippageTolerance: new Percent(5, 10_000),
+            }
           : undefined,
         {
           blockNumber: this.blockNumber - 10,
@@ -263,7 +319,7 @@ export class Quote extends BaseCommand {
           forceMixedRoutes,
           debugRouting,
           enableFeeOnTransferFeeFetching,
-          gasToken
+          gasToken,
         }
       );
     }
