@@ -14,7 +14,6 @@ import _ from 'lodash';
 
 import { FeeAmount } from '@uniswap/v3-sdk';
 import { BigNumber } from 'ethers';
-import { allRoutesWithValidQuotes } from '../../allRoutesWithValidQuotes-1';
 import routingConfig from '../../routingConfig.json';
 import {
   ID_TO_CHAIN_ID,
@@ -176,14 +175,19 @@ export class Quote extends BaseCommand {
       */
       const v2PoolProvider = router.getV2PoolProvider();
       const v3PoolProvider = router.getV3PoolProvider();
+      console.log('177-----');
       const v2Accessor = await v2PoolProvider.getPools([
         [tokenIn as Token, tokenOut as Token],
       ]);
+      console.log('182-----');
       const v3Accessor = await v3PoolProvider.getPools([
         [tokenIn as Token, tokenOut as Token, FeeAmount.MEDIUM],
       ]);
+      console.log('183-----');
       const v2Pools = v2Accessor.getAllPools();
+      console.log('v2Pools');
       const v3Pools = v3Accessor.getAllPools();
+      console.log('v3Pools');
       const v2Routes = computeAllV2Routes(
         tokenIn as Token,
         tokenOut as Token,
@@ -198,7 +202,7 @@ export class Quote extends BaseCommand {
       );
       const v2Quoter = router.getV2Quoter();
       const v3Quoter = router.getV3Quoter();
-      const distributionPercent = 50;
+      const distributionPercent = 20; //50
       const [percents, amounts] = getAmountDistribution(
         amountIn,
         distributionPercent
@@ -253,7 +257,7 @@ export class Quote extends BaseCommand {
         undefined,
         BigNumber.from(1e6)
       );
-      console.log(v2quotes);
+      console.log('v2quotes');
 
       const { v3GasModel } = await router.getGasModel(
         amountIn,
@@ -270,7 +274,7 @@ export class Quote extends BaseCommand {
         undefined,
         v3GasModel
       );
-      console.log(v3quotes);
+      console.log('v3quotes');
 
       const portionProvider = new PortionProvider();
 
@@ -278,10 +282,14 @@ export class Quote extends BaseCommand {
       // const routes = allRoutesWithValidQuotes
       //   .map(convertToRouteWithValidQuote)
       //   .filter((route): route is RouteWithValidQuote => route !== null);
+      const allRoutesWithValidQuotesTemp = [
+        ...v2quotes.routesWithValidQuotes,
+        ...v3quotes.routesWithValidQuotes,
+      ];
       const bestResult = await getBestSwapRoute(
         amountIn,
         percents,
-        allRoutesWithValidQuotes as any,
+        allRoutesWithValidQuotesTemp as any,
         TradeType.EXACT_INPUT,
         8453,
         routingConfig as any,

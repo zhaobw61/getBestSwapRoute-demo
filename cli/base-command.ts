@@ -240,7 +240,19 @@ export abstract class BaseCommand extends Command {
     });
     setGlobalMetric(metricLogger);
 
-    const provider = new JsonRpcProvider(chainProvider, chainId);
+    // const provider = new JsonRpcProvider(chainProvider, chainId);
+    // 包装 JsonRpcProvider 的 send 方法，监听每次 RPC 调用
+    let rpcCallCount = 0;
+    class MonitoredJsonRpcProvider extends JsonRpcProvider {
+      async send(method: string, params: any[]): Promise<any> {
+        rpcCallCount++;
+        console.log(`🔁 RPC Call #${rpcCallCount}: ${method}`);
+        return super.send(method, params);
+      }
+    }
+
+    // 自定义的
+    const provider = new MonitoredJsonRpcProvider(chainProvider, chainId);
     this._blockNumber = await provider.getBlockNumber();
 
     const tokenCache = new NodeJSCache<Token>(
