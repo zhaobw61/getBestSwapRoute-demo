@@ -17,11 +17,16 @@ import { BigNumber } from 'ethers';
 import routingConfig from '../../routingConfig.json';
 import {
   ID_TO_CHAIN_ID,
+  IGasModel,
+  L1ToL2GasCosts,
   MapWithLowerCaseKey,
   nativeOnChain,
   parseAmount,
   //SwapRoute,
   SwapType,
+  USDC_BASE,
+  V2RouteWithValidQuote,
+  V3RouteWithValidQuote,
 } from '../../src';
 import { PortionProvider } from '../../src/providers/portion-provider';
 import { getBestSwapRoute } from '../../src/routers/alpha-router/functions/best-swap-route';
@@ -156,16 +161,16 @@ export class Quote extends BaseCommand {
     const tokenIn: Currency = NATIVE_NAMES_BY_ID[chainId]!.includes(tokenInStr)
       ? nativeOnChain(chainId)
       : (await tokenProvider.getTokens([tokenInStr])).getTokenByAddress(
-          tokenInStr
-        )!;
+        tokenInStr
+      )!;
 
     const tokenOut: Currency = NATIVE_NAMES_BY_ID[chainId]!.includes(
       tokenOutStr
     )
       ? nativeOnChain(chainId)
       : (await tokenProvider.getTokens([tokenOutStr])).getTokenByAddress(
-          tokenOutStr
-        )!;
+        tokenOutStr
+      )!;
 
     if (exactIn) {
       const amountIn = parseAmount(amountStr, tokenIn);
@@ -246,6 +251,8 @@ export class Quote extends BaseCommand {
         enableFeeOnTransferFeeFetching,
         gasToken,
       };
+
+      const v2GasModel = new V2GasModel();
       const v2quotes = await v2Quoter.getQuotes(
         v2Routes,
         amounts,
@@ -254,16 +261,12 @@ export class Quote extends BaseCommand {
         TradeType.EXACT_INPUT,
         dummyConfig,
         undefined,
-        undefined,
+        v2GasModel,
         BigNumber.from(1e6)
       );
       console.log('v2quotes');
 
-      const { v3GasModel } = await router.getGasModel(
-        amountIn,
-        tokenOut as Currency,
-        dummyConfig
-      );
+      const v3GasModel = new V3GasModel();
       const v3quotes = await v3Quoter.getQuotes(
         v3Routes,
         amounts,
@@ -305,11 +308,11 @@ export class Quote extends BaseCommand {
         TradeType.EXACT_OUTPUT,
         recipient
           ? {
-              type: SwapType.SWAP_ROUTER_02,
-              deadline: 100,
-              recipient,
-              slippageTolerance: new Percent(5, 10_000),
-            }
+            type: SwapType.SWAP_ROUTER_02,
+            deadline: 100,
+            recipient,
+            slippageTolerance: new Percent(5, 10_000),
+          }
           : undefined,
         {
           blockNumber: this.blockNumber - 10,
@@ -338,3 +341,71 @@ export class Quote extends BaseCommand {
     }
   }
 }
+
+class V3GasModel implements IGasModel<V3RouteWithValidQuote> {
+  public estimateGasCost(routeWithValidQuote: V3RouteWithValidQuote): {
+    gasEstimate: BigNumber,
+    gasCostInToken: CurrencyAmount<Currency>,
+    gasCostInUSD: CurrencyAmount<Currency>,
+    gasCostInGasToken?: CurrencyAmount<Currency>,
+  } {
+    const token = routeWithValidQuote.quoteToken;
+    const usd = USDC_BASE;
+    return {
+      gasEstimate: BigNumber.from(1),
+      gasCostInToken: CurrencyAmount.fromRawAmount(
+        token,
+        0,
+      ),
+      gasCostInUSD: CurrencyAmount.fromRawAmount(
+        usd,
+        0,
+      ),
+    };
+  }
+
+  public calculateL1GasFees(routes: V3RouteWithValidQuote[]): Promise<L1ToL2GasCosts> {
+    const token = routes[0]!.quoteToken;
+    const usd = USDC_BASE;
+    return Promise.resolve({
+      gasUsedL1: BigNumber.from(1),
+      gasUsedL1OnL2: BigNumber.from(1),
+      gasCostL1USD: CurrencyAmount.fromRawAmount(usd, 0),
+      gasCostL1QuoteToken: CurrencyAmount.fromRawAmount(token, 0),
+    });
+  }
+};
+
+class V2GasModel implements IGasModel<V2RouteWithValidQuote> {
+  public estimateGasCost(routeWithValidQuote: V2RouteWithValidQuote): {
+    gasEstimate: BigNumber,
+    gasCostInToken: CurrencyAmount<Currency>,
+    gasCostInUSD: CurrencyAmount<Currency>,
+    gasCostInGasToken?: CurrencyAmount<Currency>,
+  } {
+    const token = routeWithValidQuote.quoteToken;
+    const usd = USDC_BASE;
+    return {
+      gasEstimate: BigNumber.from(1),
+      gasCostInToken: CurrencyAmount.fromRawAmount(
+        token,
+        0,
+      ),
+      gasCostInUSD: CurrencyAmount.fromRawAmount(
+        usd,
+        0,
+      ),
+    };
+  }
+
+  public calculateL1GasFees(routes: V2RouteWithValidQuote[]): Promise<L1ToL2GasCosts> {
+    const token = routes[0]!.quoteToken;
+    const usd = USDC_BASE;
+    return Promise.resolve({
+      gasUsedL1: BigNumber.from(1),
+      gasUsedL1OnL2: BigNumber.from(1),
+      gasCostL1USD: CurrencyAmount.fromRawAmount(usd, 0),
+      gasCostL1QuoteToken: CurrencyAmount.fromRawAmount(token, 0),
+    });
+  }
+};
