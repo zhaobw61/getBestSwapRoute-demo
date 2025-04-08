@@ -12,7 +12,7 @@ import {
 import dotenv from 'dotenv';
 import _ from 'lodash';
 
-import { FeeAmount } from '@uniswap/v3-sdk';
+import { FeeAmount, MethodParameters } from '@uniswap/v3-sdk';
 import { BigNumber } from 'ethers';
 import routingConfig from '../../routingConfig.json';
 import {
@@ -35,6 +35,10 @@ import {
   computeAllV3Routes,
 } from '../../src/routers/alpha-router/functions/compute-all-routes';
 import { NATIVE_NAMES_BY_ID, TO_PROTOCOL } from '../../src/util';
+import {
+  buildSwapMethodParameters,
+  buildTrade,
+} from '../../src/util/methodParameters';
 import { BaseCommand } from '../base-command';
 //import { Pair } from '@uniswap/v2-sdk';
 //import { UniversalRouterVersion } from '@uniswap/universal-router-sdk';
@@ -161,16 +165,16 @@ export class Quote extends BaseCommand {
     const tokenIn: Currency = NATIVE_NAMES_BY_ID[chainId]!.includes(tokenInStr)
       ? nativeOnChain(chainId)
       : (await tokenProvider.getTokens([tokenInStr])).getTokenByAddress(
-        tokenInStr
-      )!;
+          tokenInStr
+        )!;
 
     const tokenOut: Currency = NATIVE_NAMES_BY_ID[chainId]!.includes(
       tokenOutStr
     )
       ? nativeOnChain(chainId)
       : (await tokenProvider.getTokens([tokenOutStr])).getTokenByAddress(
-        tokenOutStr
-      )!;
+          tokenOutStr
+        )!;
 
     if (exactIn) {
       const amountIn = parseAmount(amountStr, tokenIn);
@@ -300,6 +304,49 @@ export class Quote extends BaseCommand {
         v3GasModel as any
       );
       console.log('Best result: ', bestResult);
+      // ------
+      function determineCurrencyInOutFromTradeType(
+        tradeType: TradeType,
+        amount: CurrencyAmount<Currency>,
+        quoteCurrency: Currency
+      ) {
+        if (tradeType === TradeType.EXACT_INPUT) {
+          return {
+            currencyIn: amount.currency,
+            currencyOut: quoteCurrency,
+          };
+        } else {
+          return {
+            currencyIn: quoteCurrency,
+            currencyOut: amount.currency,
+          };
+        }
+      }
+      const { currencyIn, currencyOut } = determineCurrencyInOutFromTradeType(
+        TradeType.EXACT_OUTPUT,
+        amountIn,
+        tokenOut
+      );
+      let routeAmounts = bestResult?.routes;
+      // Build Trade object that represents the optimal swap.
+      const trade = buildTrade<typeof TradeType.EXACT_INPUT>(
+        currencyIn,
+        currencyOut,
+        TradeType.EXACT_INPUT,
+        routeAmounts as any
+      );
+      console.log('trade', trade);
+      let methodParameters: MethodParameters | undefined;
+      let swapConfig: any = {
+        type: 0,
+        deadlineOrPreviousBlockhash: 10000000000000,
+        recipient: '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B',
+        slippageTolerance: new Percent(5, 100),
+        simulate: undefined,
+        version: '2.0',
+      };
+      methodParameters = buildSwapMethodParameters(trade, swapConfig, 8453);
+      console.log('methodParameters', methodParameters);
     } else {
       const amountOut = parseAmount(amountStr, tokenOut);
       await router.route(
@@ -308,11 +355,11 @@ export class Quote extends BaseCommand {
         TradeType.EXACT_OUTPUT,
         recipient
           ? {
-            type: SwapType.SWAP_ROUTER_02,
-            deadline: 100,
-            recipient,
-            slippageTolerance: new Percent(5, 10_000),
-          }
+              type: SwapType.SWAP_ROUTER_02,
+              deadline: 100,
+              recipient,
+              slippageTolerance: new Percent(5, 10_000),
+            }
           : undefined,
         {
           blockNumber: this.blockNumber - 10,
@@ -344,27 +391,23 @@ export class Quote extends BaseCommand {
 
 class V3GasModel implements IGasModel<V3RouteWithValidQuote> {
   public estimateGasCost(routeWithValidQuote: V3RouteWithValidQuote): {
-    gasEstimate: BigNumber,
-    gasCostInToken: CurrencyAmount<Currency>,
-    gasCostInUSD: CurrencyAmount<Currency>,
-    gasCostInGasToken?: CurrencyAmount<Currency>,
+    gasEstimate: BigNumber;
+    gasCostInToken: CurrencyAmount<Currency>;
+    gasCostInUSD: CurrencyAmount<Currency>;
+    gasCostInGasToken?: CurrencyAmount<Currency>;
   } {
     const token = routeWithValidQuote.quoteToken;
     const usd = USDC_BASE;
     return {
       gasEstimate: BigNumber.from(1),
-      gasCostInToken: CurrencyAmount.fromRawAmount(
-        token,
-        0,
-      ),
-      gasCostInUSD: CurrencyAmount.fromRawAmount(
-        usd,
-        0,
-      ),
+      gasCostInToken: CurrencyAmount.fromRawAmount(token, 0),
+      gasCostInUSD: CurrencyAmount.fromRawAmount(usd, 0),
     };
   }
 
-  public calculateL1GasFees(routes: V3RouteWithValidQuote[]): Promise<L1ToL2GasCosts> {
+  public calculateL1GasFees(
+    routes: V3RouteWithValidQuote[]
+  ): Promise<L1ToL2GasCosts> {
     const token = routes[0]!.quoteToken;
     const usd = USDC_BASE;
     return Promise.resolve({
@@ -374,31 +417,27 @@ class V3GasModel implements IGasModel<V3RouteWithValidQuote> {
       gasCostL1QuoteToken: CurrencyAmount.fromRawAmount(token, 0),
     });
   }
-};
+}
 
 class V2GasModel implements IGasModel<V2RouteWithValidQuote> {
   public estimateGasCost(routeWithValidQuote: V2RouteWithValidQuote): {
-    gasEstimate: BigNumber,
-    gasCostInToken: CurrencyAmount<Currency>,
-    gasCostInUSD: CurrencyAmount<Currency>,
-    gasCostInGasToken?: CurrencyAmount<Currency>,
+    gasEstimate: BigNumber;
+    gasCostInToken: CurrencyAmount<Currency>;
+    gasCostInUSD: CurrencyAmount<Currency>;
+    gasCostInGasToken?: CurrencyAmount<Currency>;
   } {
     const token = routeWithValidQuote.quoteToken;
     const usd = USDC_BASE;
     return {
       gasEstimate: BigNumber.from(1),
-      gasCostInToken: CurrencyAmount.fromRawAmount(
-        token,
-        0,
-      ),
-      gasCostInUSD: CurrencyAmount.fromRawAmount(
-        usd,
-        0,
-      ),
+      gasCostInToken: CurrencyAmount.fromRawAmount(token, 0),
+      gasCostInUSD: CurrencyAmount.fromRawAmount(usd, 0),
     };
   }
 
-  public calculateL1GasFees(routes: V2RouteWithValidQuote[]): Promise<L1ToL2GasCosts> {
+  public calculateL1GasFees(
+    routes: V2RouteWithValidQuote[]
+  ): Promise<L1ToL2GasCosts> {
     const token = routes[0]!.quoteToken;
     const usd = USDC_BASE;
     return Promise.resolve({
@@ -408,4 +447,4 @@ class V2GasModel implements IGasModel<V2RouteWithValidQuote> {
       gasCostL1QuoteToken: CurrencyAmount.fromRawAmount(token, 0),
     });
   }
-};
+}
