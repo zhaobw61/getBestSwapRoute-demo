@@ -32,7 +32,7 @@ import {
   V2CandidatePools,
 } from '../functions/get-candidate-pools';
 import { IGasModel, IV2GasModelFactory } from '../gas-models';
-import { NATIVE_OVERHEAD } from '../gas-models/gas-costs';
+//import { NATIVE_OVERHEAD } from '../gas-models/gas-costs';
 
 import { BaseQuoter } from './base-quoter';
 import { GetQuotesResult } from './model/results/get-quotes-result';
@@ -146,7 +146,7 @@ export class V2Quoter extends BaseQuoter<V2CandidatePools, V2Route, Token> {
     tradeType: TradeType,
     _routingConfig: AlphaRouterConfig,
     candidatePools?: CandidatePoolsBySelectionCriteria,
-    _gasModel?: IGasModel<V2RouteWithValidQuote>,
+    gasModel?: IGasModel<V2RouteWithValidQuote>,
     gasPriceWei?: BigNumber
   ): Promise<GetQuotesResult> {
     const beforeGetQuotes = Date.now();
@@ -164,12 +164,14 @@ export class V2Quoter extends BaseQuoter<V2CandidatePools, V2Route, Token> {
       );
     }
     // safe to force unwrap here because we throw if there are no amounts
+    /*
     const amountToken = amounts[0]!.currency;
     const gasToken = _routingConfig.gasToken
       ? (
-          await this.tokenProvider.getTokens([_routingConfig.gasToken])
-        ).getTokenByAddress(_routingConfig.gasToken)
+        await this.tokenProvider.getTokens([_routingConfig.gasToken])
+      ).getTokenByAddress(_routingConfig.gasToken)
       : undefined;
+    */
 
     if (routes.length == 0) {
       return { routesWithValidQuotes: [], candidatePools };
@@ -181,13 +183,14 @@ export class V2Quoter extends BaseQuoter<V2CandidatePools, V2Route, Token> {
         ? this.v2QuoteProvider.getQuotesManyExactIn.bind(this.v2QuoteProvider)
         : this.v2QuoteProvider.getQuotesManyExactOut.bind(this.v2QuoteProvider);
 
-    const beforeQuotes = Date.now();
+    //const beforeQuotes = Date.now();
 
     log.info(
       `Getting quotes for V2 for ${routes.length} routes with ${amounts.length} amounts per route.`
     );
     const { routesWithQuotes } = await quoteFn(amounts, routes, _routingConfig);
 
+    /*
     const v2GasModel = await this.v2GasModelFactory.buildGasModel({
       chainId: this.chainId,
       gasPriceWei,
@@ -210,6 +213,8 @@ export class V2Quoter extends BaseQuoter<V2CandidatePools, V2Route, Token> {
       Date.now() - beforeQuotes,
       MetricLoggerUnit.Milliseconds
     );
+    */
+    const v2GasModel = gasModel!;
 
     metric.putMetric(
       'V2QuotesFetched',
