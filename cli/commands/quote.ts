@@ -41,8 +41,7 @@ import {
   buildTrade,
 } from '../../src/util/methodParameters';
 import { BaseCommand } from '../base-command';
-import { CommandType, RoutePlanner } from '@uniswap/universal-router-sdk/dist/utils/routerCommands';
-import { SwapOptions, SwapRouter, UniswapTrade, UNIVERSAL_ROUTER_ADDRESS, UniversalRouterVersion } from '@uniswap/universal-router-sdk';
+import { SwapOptions, SwapRouter, UniswapTrade, UNIVERSAL_ROUTER_ADDRESS, UniversalRouterVersion, CommandType, RoutePlanner } from '@uniswap/universal-router-sdk';
 //import { Pair } from '@uniswap/v2-sdk';
 //import { UniversalRouterVersion } from '@uniswap/universal-router-sdk';
 
@@ -357,6 +356,7 @@ export class Quote extends BaseCommand {
         useRouterBalance: true,
         version: '2.0',
       };
+      console.log('amountIn', amountIn);
       methodParameters = buildSwapMethodParameters(amountIn, trade, swapConfig, 8453);
       console.log('methodParameters', methodParameters);
     } else {
@@ -469,12 +469,14 @@ export function buildSwapMethodParameters(
 ): MethodParameters {
   const planner = new RoutePlanner();
   const router = UNIVERSAL_ROUTER_ADDRESS(UniversalRouterVersion.V2_0, chainId)
-  planner.addCommand(CommandType.TRANSFER, [amountIn.wrapped.currency.address, router, amountIn.toString()]);
+  planner.addCommand(CommandType.TRANSFER, [amountIn.wrapped.currency.address, router, amountIn.numerator.toString()]);
+  console.log('planner', planner);
   const utrade: UniswapTrade = new UniswapTrade(trade, swapConfig)
   utrade.encode(planner, { allowRevert: false })
   const { commands, inputs } = planner
-  const functionSignature = 'execute(bytes,bytes[])'
-  const parameters = [commands, inputs]
+  const deadline = 10000000000000
+  const functionSignature = 'execute(bytes,bytes[],uint256)'
+  const parameters = [commands, inputs, deadline]
   const calldata = SwapRouter.INTERFACE.encodeFunctionData(functionSignature, parameters)
 
   return {
