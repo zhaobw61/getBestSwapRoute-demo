@@ -1,7 +1,8 @@
 import { Logger } from '@ethersproject/logger';
 import { flags } from '@oclif/command';
-import { Protocol } from '@uniswap/router-sdk';
+import { Protocol, Trade } from '@uniswap/router-sdk';
 import {
+  ChainId,
   Currency,
   CurrencyAmount,
   Fraction,
@@ -12,7 +13,7 @@ import {
 import dotenv from 'dotenv';
 import _ from 'lodash';
 
-import { FeeAmount, MethodParameters } from '@uniswap/v3-sdk';
+import { FeeAmount } from '@uniswap/v3-sdk';
 import { BigNumber } from 'ethers';
 import routingConfig from '../../routingConfig.json';
 import {
@@ -20,6 +21,7 @@ import {
   IGasModel,
   L1ToL2GasCosts,
   MapWithLowerCaseKey,
+  MethodParameters,
   nativeOnChain,
   parseAmount,
   //SwapRoute,
@@ -36,10 +38,11 @@ import {
 } from '../../src/routers/alpha-router/functions/compute-all-routes';
 import { NATIVE_NAMES_BY_ID, TO_PROTOCOL } from '../../src/util';
 import {
-  buildSwapMethodParameters,
   buildTrade,
 } from '../../src/util/methodParameters';
 import { BaseCommand } from '../base-command';
+import { CommandType, RoutePlanner } from '@uniswap/universal-router-sdk/dist/utils/routerCommands';
+import { SwapOptions, SwapRouter, UniswapTrade, UNIVERSAL_ROUTER_ADDRESS, UniversalRouterVersion } from '@uniswap/universal-router-sdk';
 //import { Pair } from '@uniswap/v2-sdk';
 //import { UniversalRouterVersion } from '@uniswap/universal-router-sdk';
 
@@ -165,16 +168,16 @@ export class Quote extends BaseCommand {
     const tokenIn: Currency = NATIVE_NAMES_BY_ID[chainId]!.includes(tokenInStr)
       ? nativeOnChain(chainId)
       : (await tokenProvider.getTokens([tokenInStr])).getTokenByAddress(
-          tokenInStr
-        )!;
+        tokenInStr
+      )!;
 
     const tokenOut: Currency = NATIVE_NAMES_BY_ID[chainId]!.includes(
       tokenOutStr
     )
       ? nativeOnChain(chainId)
       : (await tokenProvider.getTokens([tokenOutStr])).getTokenByAddress(
-          tokenOutStr
-        )!;
+        tokenOutStr
+      )!;
 
     if (exactIn) {
       const amountIn = parseAmount(amountStr, tokenIn);
@@ -211,7 +214,7 @@ export class Quote extends BaseCommand {
       );
       const v2Quoter = router.getV2Quoter();
       const v3Quoter = router.getV3Quoter();
-      const distributionPercent = 20; //50
+      const distributionPercent = 1; //50
       const [percents, amounts] = getAmountDistribution(
         amountIn,
         distributionPercent
@@ -268,7 +271,6 @@ export class Quote extends BaseCommand {
         v2GasModel,
         BigNumber.from(1e6)
       );
-      console.log('v2quotes');
 
       const v3GasModel = new V3GasModel();
       const v3quotes = await v3Quoter.getQuotes(
@@ -281,7 +283,16 @@ export class Quote extends BaseCommand {
         undefined,
         v3GasModel
       );
+
+      console.log('v2quotes');
+      v2quotes.routesWithValidQuotes.forEach(route => {
+        console.log(route.percent, route.amount.toSignificant(), route.quote.toSignificant());
+      });
+
       console.log('v3quotes');
+      v3quotes.routesWithValidQuotes.forEach(route => {
+        console.log(route.percent, route.amount.toSignificant(), route.quote.toSignificant());
+      });
 
       const portionProvider = new PortionProvider();
 
@@ -303,7 +314,7 @@ export class Quote extends BaseCommand {
         portionProvider,
         v3GasModel as any
       );
-      console.log('Best result: ', bestResult);
+      console.log('Best result: ', bestResult?.routes);
       // ------
       function determineCurrencyInOutFromTradeType(
         tradeType: TradeType,
@@ -323,7 +334,7 @@ export class Quote extends BaseCommand {
         }
       }
       const { currencyIn, currencyOut } = determineCurrencyInOutFromTradeType(
-        TradeType.EXACT_OUTPUT,
+        TradeType.EXACT_INPUT,
         amountIn,
         tokenOut
       );
@@ -335,17 +346,18 @@ export class Quote extends BaseCommand {
         TradeType.EXACT_INPUT,
         routeAmounts as any
       );
-      console.log('trade', trade);
+      //console.log('trade', trade);
       let methodParameters: MethodParameters | undefined;
       let swapConfig: any = {
         type: 0,
         deadlineOrPreviousBlockhash: 10000000000000,
-        recipient: '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B',
+        //recipient: '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B',
         slippageTolerance: new Percent(5, 100),
         simulate: undefined,
+        useRouterBalance: true,
         version: '2.0',
       };
-      methodParameters = buildSwapMethodParameters(trade, swapConfig, 8453);
+      methodParameters = buildSwapMethodParameters(amountIn, trade, swapConfig, 8453);
       console.log('methodParameters', methodParameters);
     } else {
       const amountOut = parseAmount(amountStr, tokenOut);
@@ -355,11 +367,11 @@ export class Quote extends BaseCommand {
         TradeType.EXACT_OUTPUT,
         recipient
           ? {
-              type: SwapType.SWAP_ROUTER_02,
-              deadline: 100,
-              recipient,
-              slippageTolerance: new Percent(5, 10_000),
-            }
+            type: SwapType.SWAP_ROUTER_02,
+            deadline: 100,
+            recipient,
+            slippageTolerance: new Percent(5, 10_000),
+          }
           : undefined,
         {
           blockNumber: this.blockNumber - 10,
@@ -447,4 +459,27 @@ class V2GasModel implements IGasModel<V2RouteWithValidQuote> {
       gasCostL1QuoteToken: CurrencyAmount.fromRawAmount(token, 0),
     });
   }
+}
+
+export function buildSwapMethodParameters(
+  amountIn: CurrencyAmount<Currency>,
+  trade: Trade<Currency, Currency, TradeType>,
+  swapConfig: SwapOptions,
+  chainId: ChainId
+): MethodParameters {
+  const planner = new RoutePlanner();
+  const router = UNIVERSAL_ROUTER_ADDRESS(UniversalRouterVersion.V2_0, chainId)
+  planner.addCommand(CommandType.TRANSFER, [amountIn.wrapped.currency.address, router, amountIn.toString()]);
+  const utrade: UniswapTrade = new UniswapTrade(trade, swapConfig)
+  utrade.encode(planner, { allowRevert: false })
+  const { commands, inputs } = planner
+  const functionSignature = 'execute(bytes,bytes[])'
+  const parameters = [commands, inputs]
+  const calldata = SwapRouter.INTERFACE.encodeFunctionData(functionSignature, parameters)
+
+  return {
+    calldata,
+    value: '0x',
+    to: router,
+  };
 }
