@@ -1,8 +1,7 @@
 import { Logger } from '@ethersproject/logger';
 import { flags } from '@oclif/command';
-import { Protocol, Trade } from '@uniswap/router-sdk';
+import { Protocol } from '@uniswap/router-sdk';
 import {
-  ChainId,
   Currency,
   CurrencyAmount,
   Fraction,
@@ -10,11 +9,12 @@ import {
   Token,
   TradeType,
 } from '@uniswap/sdk-core';
+import { AllowanceTransfer, permit2Address, PermitSingle } from '@uniswap/permit2-sdk';
 import dotenv from 'dotenv';
 import _ from 'lodash';
 
 import { FeeAmount } from '@uniswap/v3-sdk';
-import { BigNumber } from 'ethers';
+import { BigNumber, Wallet } from 'ethers';
 import routingConfig from '../../routingConfig.json';
 import {
   ID_TO_CHAIN_ID,
@@ -38,10 +38,12 @@ import {
 } from '../../src/routers/alpha-router/functions/compute-all-routes';
 import { NATIVE_NAMES_BY_ID, TO_PROTOCOL } from '../../src/util';
 import {
+  buildSwapMethodParameters,
   buildTrade,
 } from '../../src/util/methodParameters';
 import { BaseCommand } from '../base-command';
-import { SwapOptions, SwapRouter, UniswapTrade, UNIVERSAL_ROUTER_ADDRESS, UniversalRouterVersion, CommandType, RoutePlanner } from '@uniswap/universal-router-sdk';
+import { UNIVERSAL_ROUTER_ADDRESS, UniversalRouterVersion } from '@uniswap/universal-router-sdk';
+//import { Permit2 } from '../../src/types/other/Permit2';
 //import { Pair } from '@uniswap/v2-sdk';
 //import { UniversalRouterVersion } from '@uniswap/universal-router-sdk';
 
@@ -301,7 +303,7 @@ export class Quote extends BaseCommand {
       //   .filter((route): route is RouteWithValidQuote => route !== null);
       const allRoutesWithValidQuotesTemp = [
         ...v2quotes.routesWithValidQuotes,
-        ...v3quotes.routesWithValidQuotes,
+        //...v3quotes.routesWithValidQuotes,
       ];
       const bestResult = await getBestSwapRoute(
         amountIn,
@@ -345,20 +347,32 @@ export class Quote extends BaseCommand {
         TradeType.EXACT_INPUT,
         routeAmounts as any
       );
-      //console.log('trade', trade);
+      console.log('trade', trade);
       let methodParameters: MethodParameters | undefined;
+      const chainId = 8453; // 以太坊主网
+      const spender = UNIVERSAL_ROUTER_ADDRESS(UniversalRouterVersion.V2_0, chainId); // UniversalRouter地址
+      const wallet = new Wallet("0xc84e2475d76db871f44a7fc8e01f9a10d3e343452206202eaf5ad6b3b0716f2a");
+      const { permitData, signature } = await generatePermit2Signature(
+        wallet,
+        (tokenIn as Token).address,
+        amountIn.numerator.toString(),
+        spender,
+        chainId
+      );
+      console.log('permitData', permitData);
       let swapConfig: any = {
-        type: 0,
+        type: SwapType.UNIVERSAL_ROUTER,
         deadlineOrPreviousBlockhash: 10000000000000,
         //recipient: '0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B',
         slippageTolerance: new Percent(5, 100),
         simulate: undefined,
-        useRouterBalance: true,
+        //useRouterBalance: true,
         version: '2.0',
+        inputTokenPermit: permitData,
       };
       console.log('amountIn', amountIn);
-      methodParameters = buildSwapMethodParameters(amountIn, trade, swapConfig, 8453);
-      console.log('methodParameters', methodParameters);
+      methodParameters = buildSwapMethodParameters(trade, swapConfig, chainId);
+      console.log('methodParameters', methodParameters, "signature", signature);
     } else {
       const amountOut = parseAmount(amountStr, tokenOut);
       await router.route(
@@ -461,27 +475,101 @@ class V2GasModel implements IGasModel<V2RouteWithValidQuote> {
   }
 }
 
-export function buildSwapMethodParameters(
-  amountIn: CurrencyAmount<Currency>,
-  trade: Trade<Currency, Currency, TradeType>,
-  swapConfig: SwapOptions,
-  chainId: ChainId
-): MethodParameters {
-  const planner = new RoutePlanner();
-  const router = UNIVERSAL_ROUTER_ADDRESS(UniversalRouterVersion.V2_0, chainId)
-  planner.addCommand(CommandType.TRANSFER, [amountIn.wrapped.currency.address, router, amountIn.numerator.toString()]);
-  console.log('planner', planner);
-  const utrade: UniswapTrade = new UniswapTrade(trade, swapConfig)
-  utrade.encode(planner, { allowRevert: false })
-  const { commands, inputs } = planner
-  const deadline = 10000000000000
-  const functionSignature = 'execute(bytes,bytes[],uint256)'
-  const parameters = [commands, inputs, deadline]
-  const calldata = SwapRouter.INTERFACE.encodeFunctionData(functionSignature, parameters)
+export async function generatePermit2Signature(
+  wallet: Wallet,
+  tokenAddress: string,
+  amount: string,
+  spender: string,
+  chainId: number,
+  nonce: string = '0',
+  deadline: number = 100000
+): Promise<{
+  domain: any;
+  types: any;
+  values: any;
+  signature: string;
+  permitData: PermitSingle & { signature: string };
+}> {
+  // 计算过期时间
+  const now = Math.floor(Date.now() / 1000);
+  const expiration = (now + deadline).toString();
+  const sigDeadline = expiration;
 
+  // 创建PermitSingle对象
+  const permit: PermitSingle = {
+    details: {
+      token: tokenAddress,
+      amount: amount,
+      expiration: expiration,
+      nonce: nonce,
+    },
+    spender: spender,
+    sigDeadline: sigDeadline,
+  };
+
+  // 使用AllowanceTransfer获取签名数据
+  const { domain, types, values } = AllowanceTransfer.getPermitData(
+    permit,
+    permit2Address(chainId),
+    chainId
+  );
+
+  // 使用钱包签名
+  const signature = await wallet._signTypedData(domain, types, values);
+
+  // 返回签名及相关数据
   return {
-    calldata,
-    value: '0x',
-    to: router,
+    domain,
+    types,
+    values,
+    signature,
+    permitData: {
+      ...permit,
+      signature,
+    }
   };
 }
+
+/**
+ * 使用示例:
+ * 
+ * // 引入必要的依赖
+ * import { Wallet } from 'ethers';
+ * import { UNIVERSAL_ROUTER_ADDRESS } from '@uniswap/universal-router-sdk';
+ * 
+ * // 1. 创建钱包实例
+ * const wallet = new Wallet(privateKey);
+ * 
+ * // 2. 设置参数
+ * const tokenAddress = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'; // USDC合约地址
+ * const amount = '1000000'; // 1 USDC (6位小数)
+ * const spender = UNIVERSAL_ROUTER_ADDRESS(版本, 链ID); // UniversalRouter地址
+ * const chainId = 1; // 以太坊主网
+ * 
+ * // 3. 生成签名
+ * const { permitData, signature } = await generatePermit2Signature(
+ *   wallet,
+ *   tokenAddress,
+ *   amount,
+ *   spender,
+ *   chainId
+ * );
+ * 
+ * // 4. 使用签名数据执行swap
+ * const swapOptions = {
+ *   type: SwapType.UNIVERSAL_ROUTER,
+ *   recipient: wallet.address,
+ *   slippageTolerance: new Percent(5, 100),
+ *   deadlineOrPreviousBlockhash: Math.floor(Date.now() / 1000 + 1800),
+ *   inputTokenPermit: permitData,
+ * };
+ * 
+ * // 5. 调用router.route()方法进行交易
+ * const route = await router.route(
+ *   amountIn,
+ *   tokenOut,
+ *   TradeType.EXACT_INPUT,
+ *   swapOptions,
+ *   routingConfig
+ * );
+ */
